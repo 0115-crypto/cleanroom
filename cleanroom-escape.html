@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CLEANROOM LOCKDOWN — 半導体工場脱出ゲーム</title>
+<link href="https://fonts.googleapis.com/css2?family=DotGothic16&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0b0e14;
+    --panel:#141a26;
+    --line:#2a3550;
+    --text:#cfe3ff;
+    --dim:#7a8db0;
+    --amber:#ffb454;
+    --red:#ff5d5d;
+    --green:#7dffa3;
+    --cyan:#6fe3ff;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:'DotGothic16',monospace;
+    display:flex;flex-direction:column;align-items:center;
+    padding:12px;
+    -webkit-font-smoothing:none;
+  }
+  h1{font-size:18px;letter-spacing:2px;color:var(--cyan);margin:6px 0 2px}
+  .sub{font-size:11px;color:var(--dim);margin-bottom:10px}
+  #stage-wrap{position:relative;width:min(96vw,840px);aspect-ratio:16/9;border:2px solid var(--line);background:#000;box-shadow:0 0 0 4px #060810, 0 8px 40px rgba(0,0,0,.6)}
+  canvas{width:100%;height:100%;image-rendering:pixelated;display:block}
+  .hot{position:absolute;cursor:pointer;border:1px dashed transparent}
+  .hot:hover,.hot:focus-visible{border-color:rgba(111,227,255,.7);background:rgba(111,227,255,.08);outline:none}
+  .hot .tag{
+    position:absolute;left:50%;top:-20px;transform:translateX(-50%);
+    background:#0b0e14;border:1px solid var(--cyan);color:var(--cyan);
+    font-size:10px;padding:1px 5px;white-space:nowrap;display:none;pointer-events:none;
+  }
+  .hot:hover .tag,.hot:focus-visible .tag{display:block}
+
+  #msgbar{
+    width:min(96vw,840px);margin-top:10px;background:var(--panel);
+    border:2px solid var(--line);padding:10px 14px;min-height:64px;
+    font-size:13px;line-height:1.7;
+  }
+  #msgbar .who{color:var(--amber);font-size:11px}
+  #objective{width:min(96vw,840px);margin-top:6px;font-size:11px;color:var(--dim)}
+  #objective b{color:var(--green)}
+
+  /* modal */
+  #modal{
+    position:fixed;inset:0;background:rgba(4,6,10,.82);
+    display:none;align-items:center;justify-content:center;z-index:50;padding:16px;
+  }
+  #modal.open{display:flex}
+  #modal .box{
+    width:min(94vw,560px);background:var(--panel);border:2px solid var(--cyan);
+    padding:18px;font-size:13px;line-height:1.9;position:relative;
+    box-shadow:0 0 24px rgba(111,227,255,.15);
+  }
+  #modal h2{font-size:14px;color:var(--cyan);border-bottom:1px solid var(--line);padding-bottom:6px;margin-bottom:10px;letter-spacing:1px}
+  #modal .log{background:#0a0d14;border:1px solid var(--line);padding:8px 10px;margin:8px 0;color:var(--amber);font-size:12px}
+  #modal .note{color:var(--dim);font-size:11px;margin-top:10px}
+  #modal .close{
+    margin-top:14px;background:#0a0d14;border:1px solid var(--cyan);color:var(--cyan);
+    font-family:inherit;font-size:12px;padding:6px 18px;cursor:pointer;
+  }
+  #modal .close:hover{background:var(--cyan);color:#06121a}
+
+  /* cipher puzzle */
+  .cipher-words{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
+  .cipher-words button{
+    font-family:inherit;font-size:13px;padding:8px 14px;cursor:pointer;
+    background:#0a0d14;border:2px solid var(--line);color:var(--text);letter-spacing:1px;
+  }
+  .cipher-words button:hover:not(:disabled){border-color:var(--cyan)}
+  .cipher-words button:disabled{opacity:.3;cursor:default}
+  .cipher-slots{display:flex;gap:6px;margin:6px 0;min-height:30px;flex-wrap:wrap}
+  .cipher-slots span{border:1px solid var(--amber);color:var(--amber);padding:4px 10px;font-size:12px}
+  .cipher-msg{font-size:12px;min-height:20px;margin-top:6px}
+  .cipher-msg.ok{color:var(--green)}
+  .cipher-msg.ng{color:var(--red)}
+  .mini{font-family:inherit;font-size:11px;padding:4px 10px;cursor:pointer;background:#0a0d14;border:1px solid var(--dim);color:var(--dim);margin-top:4px}
+
+  /* terminal */
+  #terminal-input{
+    width:100%;font-family:inherit;font-size:16px;letter-spacing:2px;
+    background:#050a08;border:2px solid var(--green);color:var(--green);
+    padding:10px;margin:10px 0;
+  }
+  #terminal-input:focus{outline:none;box-shadow:0 0 12px rgba(125,255,163,.3)}
+  .submit{
+    font-family:inherit;font-size:13px;padding:8px 22px;cursor:pointer;
+    background:var(--green);border:none;color:#06140b;
+  }
+
+  /* overlay screens (title / ending) */
+  .screen{
+    position:absolute;inset:0;background:rgba(5,7,12,.94);z-index:10;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    text-align:center;padding:24px;gap:14px;
+  }
+  .screen h2{font-size:clamp(18px,4vw,30px);color:var(--cyan);letter-spacing:4px}
+  .screen p{font-size:13px;line-height:2;color:var(--text);max-width:480px}
+  .screen .start{
+    font-family:inherit;font-size:14px;letter-spacing:2px;padding:10px 30px;cursor:pointer;
+    background:transparent;border:2px solid var(--cyan);color:var(--cyan);
+  }
+  .screen .start:hover{background:var(--cyan);color:#06121a}
+  .blink{animation:blink 1.2s steps(2) infinite}
+  @keyframes blink{50%{opacity:0}}
+  .alarm{animation:alarm 1s steps(2) infinite}
+  @keyframes alarm{50%{color:var(--red)}}
+  @media (prefers-reduced-motion: reduce){.blink,.alarm{animation:none}}
+</style>
+</head>
+<body>
+
+<h1>CLEANROOM LOCKDOWN</h1>
+<div class="sub">— 半導体工場脱出ゲーム / 停止原因を突き止めてクリーンルームから脱出せよ —</div>
+
+<div id="stage-wrap">
+  <canvas id="cv" width="320" height="180"></canvas>
+
+  <!-- hotspots (percent-based over canvas) -->
+  <div class="hot" data-spot="litho"   style="left:4%;top:22%;width:17%;height:48%"><span class="tag">露光装置</span></div>
+  <div class="hot" data-spot="clean"   style="left:24%;top:22%;width:17%;height:48%"><span class="tag">洗浄装置</span></div>
+  <div class="hot" data-spot="etch"    style="left:44%;top:22%;width:17%;height:48%"><span class="tag">エッチング装置</span></div>
+  <div class="hot" data-spot="blueprint" style="left:65%;top:14%;width:13%;height:24%"><span class="tag">搬送ラインの図面</span></div>
+  <div class="hot" data-spot="shelf"   style="left:80%;top:24%;width:15%;height:42%"><span class="tag">部品棚</span></div>
+  <div class="hot" data-spot="memo"    style="left:77%;top:74%;width:7%;height:9%"><span class="tag">落ちているメモ</span></div>
+  <div class="hot" data-spot="panel"   style="left:47%;top:72%;width:11%;height:14%"><span class="tag">装置裏の暗号パネル</span></div>
+  <div class="hot" data-spot="door"    style="left:8%;top:74%;width:14%;height:16%"><span class="tag">ロックされた扉</span></div>
+  <div class="hot" data-spot="terminal" style="left:28%;top:73%;width:12%;height:15%"><span class="tag">作業端末</span></div>
+
+  <!-- title screen -->
+  <div class="screen" id="title-screen">
+    <h2 class="alarm">⚠ EMERGENCY LOCKDOWN ⚠</h2>
+    <p>
+      ここは半導体工場のクリーンルーム。<br>
+      装置点検中、突如として製造ラインが全停止——<br>
+      電子ロックの音とともに、あなたは閉じ込められた。<br><br>
+      <span style="color:var(--amber)">工場長：「原因究明をお前に任せたい。<br>ヒントはこの部屋のどこかに残してある。<br>すべては――に関係しているはずだ」</span>
+    </p>
+    <button class="start" id="btn-start">▶ 調査を開始する</button>
+  </div>
+
+  <!-- ending screen -->
+  <div class="screen" id="end-screen" style="display:none">
+    <h2 style="color:var(--green)">ESCAPE SUCCESS</h2>
+    <p id="end-text"></p>
+    <button class="start" id="btn-retry">▶ もう一度遊ぶ</button>
+  </div>
+</div>
+
+<div id="msgbar">
+  <span class="who">SYSTEM ▸</span><br>
+  <span id="msg">気になる場所をクリック（タップ）して調べよう。</span>
+</div>
+<div id="objective">目的：<b id="obj-text">停止原因の手がかりを集める（0 / 5）</b></div>
+
+<!-- modal -->
+<div id="modal" role="dialog" aria-modal="true">
+  <div class="box">
+    <h2 id="m-title"></h2>
+    <div id="m-body"></div>
+    <button class="close" id="m-close">閉じる</button>
+  </div>
+</div>
+
+<script>
+/* ================= state ================= */
+const S = {
+  started:false,
+  clues:{litho:false, clean:false, etch:false, memo:false, shelf:false, blueprint:false},
+  cipherSolved:false,
+  escaped:false,
+};
+const CLUE_KEYS = ['litho','clean','etch','memo','shelf']; // 5 main clues (blueprint is for cipher order)
+const ANSWERS = ['搬送','搬送トラブル','搬送ライン','搬送エラー','はんそう'];
+
+/* ================= canvas pixel room ================= */
+const cv = document.getElementById('cv');
+const g = cv.getContext('2d');
+function R(x,y,w,h,c){ g.fillStyle=c; g.fillRect(x,y,w,h); }
+
+function drawRoom(){
+  // walls & floor
+  R(0,0,320,180,'#10141f');
+  R(0,0,320,118,'#1a2233');           // wall
+  for(let i=0;i<320;i+=16) R(i,116,1,2,'#0d111b');
+  R(0,118,320,62,'#232c40');          // floor
+  for(let y=124;y<180;y+=10) R(0,y,320,1,'#1b2335');
+  for(let x=0;x<320;x+=20) R(x,118,1,62,'#1b2335');
+  // ceiling lights (emergency mode = dim red strip)
+  R(0,0,320,6,'#070a10');
+  for(let x=14;x<320;x+=60){ R(x,2,22,3,'#451a1f'); R(x+8,3,6,1,'#ff5d5d'); }
+
+  // --- three machines ---
+  machine(14, 44, '#3a4a6b', '#ffb454');   // litho
+  machine(78, 44, '#39536b', '#6fe3ff');   // clean
+  machine(142,44, '#4b3a6b', '#ff8bd1');   // etch
+
+  // --- blueprint on wall ---
+  R(208,28,42,32,'#d9d2b8'); R(210,30,38,28,'#2a4a8a');
+  g.strokeStyle='#bcd2ff'; g.lineWidth=1;
+  g.beginPath(); g.moveTo(213,52); g.lineTo(228,52); g.lineTo(228,38); g.lineTo(244,38); g.stroke();
+  g.strokeStyle='#ff5d5d';
+  g.beginPath(); g.moveTo(213,44); g.lineTo(222,44); g.lineTo(222,34); g.lineTo(236,34); g.stroke();
+  R(212,31,4,3,'#ffdf6b');
+
+  // --- parts shelf ---
+  R(258,44,48,70,'#33405e'); R(260,46,44,66,'#1c2436');
+  for(let s=0;s<3;s++){
+    const sy=52+s*20; R(261,sy+12,42,2,'#3d4c70');
+    for(let b=0;b<4;b++){ if(s===1&&b===2) continue; /* missing sensor slot */ R(264+b*10,sy,7,10, s===1?'#5a6b8f':'#46577c'); }
+  }
+  // empty slot highlight
+  R(284,72,7,10,'#0e131f');
+
+  // --- memo on floor ---
+  R(248,138,12,8,'#e8e2c8'); R(250,140,8,1,'#777'); R(250,142,8,1,'#777');
+
+  // --- hidden cipher panel (behind machines, low) ---
+  R(152,132,32,16,'#0f1521'); R(154,134,28,12,'#0a2a22');
+  R(156,136,3,3,'#7dffa3'); R(161,136,3,3,'#7dffa3'); R(166,136,3,3,'#3a6b54'); R(171,136,3,3,'#7dffa3');
+  R(156,142,18,2,'#1f4a3a');
+
+  // --- door (locked) ---
+  R(28,128,40,48,'#2c3852'); R(31,131,34,42,'#202a40');
+  R(46,150,4,6,'#11161f');
+  R(42,122,12,5,'#3a0f14'); R(45,123,6,3, S.escaped ? '#7dffa3' : '#ff5d5d');
+
+  // --- terminal desk ---
+  R(92,140,38,8,'#3a4661'); R(94,148,4,18,'#2a3550'); R(124,148,4,18,'#2a3550');
+  R(98,122,26,18,'#10151f'); R(100,124,22,14, S.cipherSolved ? '#0c2a16' : '#0a1626');
+  if(S.cipherSolved){ R(102,128,14,2,'#7dffa3'); R(102,132,8,2,'#7dffa3'); }
+  else { R(102,128,16,2,'#1f4a6b'); R(102,132,10,2,'#1f4a6b'); }
+
+  // OHT rail on ceiling (theme flavor)
+  R(0,10,320,3,'#384562');
+  R(120,13,14,8,'#5a6b8f'); R(124,21,6,4,'#46577c'); // stopped OHT vehicle
+  R(121,14,3,2,'#ff5d5d');
+}
+function machine(x,y,body,lamp){
+  R(x,y,52,74,body);
+  R(x+4,y+4,44,18,'#0c1220');                 // window
+  R(x+8,y+8,12,3,'#23406b'); R(x+8,y+13,20,3,'#23406b');
+  R(x+4,y+28,44,2,'#0c1220');
+  for(let b=0;b<3;b++) R(x+8+b*14, y+36, 8,8, '#1a2438');
+  R(x+8,y+52,36,14,'#161e30');
+  R(x+12,y+56,4,4,lamp);                      // status lamp
+  R(x+20,y+56,18,4,'#0c1220');
+  R(x+2,y+74,8,4,'#11161f'); R(x+42,y+74,8,4,'#11161f');
+}
+drawRoom();
+
+/* ================= UI helpers ================= */
+const msg = t => document.getElementById('msg').innerHTML = t;
+const modal = document.getElementById('modal');
+const mTitle = document.getElementById('m-title');
+const mBody = document.getElementById('m-body');
+let lastFocus=null;
+function openModal(title, html){
+  lastFocus=document.activeElement;
+  mTitle.textContent=title; mBody.innerHTML=html;
+  modal.classList.add('open');
+  document.getElementById('m-close').focus();
+}
+function closeModal(){ modal.classList.remove('open'); if(lastFocus) lastFocus.focus(); }
+document.getElementById('m-close').onclick=closeModal;
+modal.addEventListener('click',e=>{ if(e.target===modal) closeModal(); });
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeModal(); });
+
+function clueCount(){ return CLUE_KEYS.filter(k=>S.clues[k]).length; }
+function updateObjective(){
+  const o=document.getElementById('obj-text');
+  if(S.escaped){ o.textContent='脱出成功！'; return; }
+  if(S.cipherSolved){ o.textContent='作業端末に「停止原因」を入力せよ'; return; }
+  const n=clueCount();
+  if(n>=5) o.textContent='装置裏の暗号パネルを解け（ヒント：図面）';
+  else o.textContent=`停止原因の手がかりを集める（${n} / 5）`;
+}
+function gotClue(key, after){
+  if(!S.clues[key]){ S.clues[key]=true; }
+  updateObjective();
+  if(after) after();
+}
+
+/* ================= spot contents ================= */
+const spots = {
+  litho(){
+    gotClue('litho');
+    openModal('露光装置 — 操作パネル', `
+      パネルは生きている。装置自体に故障の形跡はない。
+      <div class="log">▸ ERROR LOG<br>「材料未到着」<br>「処理待ち：前工程からの供給なし」</div>
+      <div class="note">…材料が届いていない？ 装置は正常なのに。</div>`);
+  },
+  clean(){
+    gotClue('clean');
+    openModal('洗浄装置 — 操作パネル', `
+      薬液も純水も正常値。だがウェハが一枚も入っていない。
+      <div class="log">▸ ERROR LOG<br>「搬送エラー：ルート不明」<br>「キャリア待機：応答なし」</div>
+      <div class="note">「搬送エラー」…どこかで運搬が止まっている。</div>`);
+  },
+  etch(){
+    gotClue('etch');
+    openModal('エッチング装置 — 操作パネル', `
+      チャンバー内は空。プロセスガスの供給は待機状態のままだ。
+      <div class="log">▸ ERROR LOG<br>「材料未到着」<br>「FOUP受け取り失敗：3回連続」</div>
+      <div class="note">3台とも共通している。届くはずのものが、届いていない。</div>`);
+  },
+  memo(){
+    gotClue('memo');
+    openModal('工場長のメモ', `
+      棚の脇に走り書きのメモが落ちている。
+      <div class="log">「搬送ルートの再確認が必要。<br>　特にOHTの分岐点……<br>　順番は図面の番号どおりに。」</div>
+      <div class="note">OHT——天井を走る自動搬送システムのことだ。見上げると、レールの上で搬送車が止まっている。</div>`);
+  },
+  shelf(){
+    gotClue('shelf');
+    openModal('部品棚', `
+      予備パーツが整然と並んでいる。だが——
+      <div class="log">▸ 在庫確認<br>制御基板：✔　駆動ベルト：✔　バルブ：✔<br><span style="color:var(--red)">搬送ロボット用センサー：×（抜き取られている）</span></div>
+      <div class="note">センサーがない。誰かが外したのか、それとも交換中だったのか…。</div>`);
+  },
+  blueprint(){
+    S.clues.blueprint=true;
+    openModal('搬送ラインの図面', `
+      壁に貼られた古い図面。一本のルートだけ赤いマーカーで囲まれ、各地点に番号が振ってある。
+      <div class="log">赤いルートの通過順：<br>
+      ② FLOW地点 → ④ TRANSFER地点 → ① MHS地点 → ③ MOVE地点</div>
+      <div class="note">番号順（①→②→③→④）に読み替えると…暗号パネルで使えそうだ。</div>`);
+    updateObjective();
+  },
+  panel(){
+    if(S.cipherSolved){
+      openModal('暗号パネル', `<div class="log" style="color:var(--green)">UNLOCKED — 作業端末が起動しました。</div>`);
+      return;
+    }
+    if(clueCount()<5){
+      openModal('装置裏の暗号パネル', `
+        装置の裏に隠されたパネル。4つの単語キーが並んでいる。
+        <div class="log">[ MHS ] [ FLOW ] [ MOVE ] [ TRANSFER ]</div>
+        <div class="note">正しい順に押す必要がありそうだ。まだ手がかりが足りない。部屋をもっと調べよう。</div>`);
+      return;
+    }
+    openCipher();
+  },
+  door(){
+    if(S.escaped) return;
+    openModal('ロックされた扉', `
+      重い電子ロックがかかっている。赤いランプが点滅中。
+      <div class="log">▸ SECURITY<br>「製造ライン停止原因の特定まで開放できません」<br>「作業端末より原因を入力してください」</div>`);
+  },
+  terminal(){
+    if(!S.cipherSolved){
+      openModal('作業端末', `
+        画面は暗い。電源は入っているが、入力がロックされている。
+        <div class="log">▸ LOCKED<br>「認証キー未解除：装置裏のパネルを確認せよ」</div>`);
+      return;
+    }
+    openTerminal();
+  },
+};
+
+/* ================= cipher puzzle ================= */
+const CIPHER_ORDER = ['MHS','FLOW','MOVE','TRANSFER']; // ①MHS ②FLOW ③MOVE ④TRANSFER
+let cipherInput = [];
+function openCipher(){
+  cipherInput=[];
+  const hint = S.clues.blueprint
+    ? '図面の番号①→②→③→④の順に押せ。'
+    : 'どこかに「順番」の手がかりがあるはずだ。（壁の図面…？）';
+  openModal('装置裏の暗号パネル', `
+    4つの単語キー。正しい順に押すと認証が解除される。
+    <div class="note">${hint}</div>
+    <div class="cipher-words" id="cw">
+      ${['FLOW','TRANSFER','MHS','MOVE'].map(w=>`<button data-w="${w}">${w}</button>`).join('')}
+    </div>
+    <div>入力中：</div>
+    <div class="cipher-slots" id="cs"></div>
+    <button class="mini" id="c-reset">リセット</button>
+    <div class="cipher-msg" id="cm"></div>
+  `);
+  const cw=document.getElementById('cw');
+  const cs=document.getElementById('cs');
+  const cm=document.getElementById('cm');
+  cw.addEventListener('click',e=>{
+    const b=e.target.closest('button'); if(!b||b.disabled) return;
+    b.disabled=true;
+    cipherInput.push(b.dataset.w);
+    cs.innerHTML=cipherInput.map(w=>`<span>${w}</span>`).join('');
+    if(cipherInput.length===4){
+      if(cipherInput.join(',')===CIPHER_ORDER.join(',')){
+        S.cipherSolved=true;
+        cm.className='cipher-msg ok';
+        cm.textContent='✔ 認証解除 — 作業端末が起動した！';
+        drawRoom(); updateObjective();
+        msg('暗号パネルの認証が解除された。<span style="color:var(--green)">作業端末</span>を調べよう。');
+      }else{
+        cm.className='cipher-msg ng';
+        cm.textContent='✘ ブザーが鳴った。順番が違うようだ。';
+        setTimeout(()=>{ if(!S.cipherSolved) resetCipher(); },900);
+      }
+    }
+  });
+  document.getElementById('c-reset').onclick=resetCipher;
+  function resetCipher(){
+    cipherInput=[];
+    cs.innerHTML=''; cm.textContent=''; cm.className='cipher-msg';
+    cw.querySelectorAll('button').forEach(b=>b.disabled=false);
+  }
+}
+
+/* ================= terminal ================= */
+function openTerminal(){
+  openModal('作業端末', `
+    画面が緑色に明滅している。
+    <div class="log" style="color:var(--green)">▸ 「停止原因を入力せよ」</div>
+    <input id="terminal-input" type="text" placeholder="ここに原因を入力…" autocomplete="off">
+    <button class="submit" id="t-submit">送信</button>
+    <div class="cipher-msg" id="t-msg"></div>
+    <div class="note">ヒント：すべてのログとメモが指していたものは何だった？</div>
+  `);
+  const input=document.getElementById('terminal-input');
+  const tmsg=document.getElementById('t-msg');
+  input.focus();
+  function submit(){
+    const v=input.value.trim();
+    if(!v) return;
+    if(ANSWERS.some(a=>v.includes(a)) || v.includes('搬送')){
+      escapeSuccess();
+    }else{
+      tmsg.className='cipher-msg ng';
+      tmsg.textContent='✘ 「該当なし。装置ログ・メモ・図面を再確認せよ」';
+    }
+  }
+  document.getElementById('t-submit').onclick=submit;
+  input.addEventListener('keydown',e=>{ if(e.key==='Enter') submit(); });
+}
+
+function escapeSuccess(){
+  S.escaped=true;
+  closeModal();
+  drawRoom(); updateObjective();
+  document.getElementById('end-text').innerHTML = `
+    ロック解除音とともに、扉がゆっくりと開く。<br><br>
+    <span style="color:var(--amber)">工場長：「よく突き止めたな。<br>
+    搬送ラインのセンサーが外れていたのが原因だ。<br>
+    おかげでラインを再開できる。無事に脱出成功だ。」</span><br><br>
+    装置は何も壊れていなかった。<br>
+    止まっていたのは——モノを運ぶ「搬送」だった。`;
+  document.getElementById('end-screen').style.display='flex';
+}
+
+/* ================= wiring ================= */
+document.querySelectorAll('.hot').forEach(h=>{
+  h.setAttribute('tabindex','0');
+  h.setAttribute('role','button');
+  const act=()=>{ if(!S.started||S.escaped) return; spots[h.dataset.spot](); };
+  h.addEventListener('click',act);
+  h.addEventListener('keydown',e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); act(); }});
+});
+
+document.getElementById('btn-start').onclick=()=>{
+  S.started=true;
+  document.getElementById('title-screen').style.display='none';
+  msg('非常灯の赤い光の中、装置の停止音だけが響く。<br>まずは並んでいる<span style="color:var(--cyan)">装置のパネル</span>を調べてみよう。');
+};
+document.getElementById('btn-retry').onclick=()=>location.reload();
+</script>
+</body>
+</html>
