@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>停止したラインと緊急指令 — 半導体工場脱出ゲーム</title>
+<link href="https://fonts.googleapis.com/css2?family=DotGothic16&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#11131a;
+    --wall:#e8e6dd;
+    --warm:#ffd968;
+    --panel:#1a1f2c;
+    --line:#39435e;
+    --text:#e9f0ff;
+    --dim:#8b97b5;
+    --amber:#ffb454;
+    --red:#ff5d5d;
+    --green:#7dffa3;
+    --cyan:#6fe3ff;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    background:var(--bg);color:var(--text);
+    font-family:'DotGothic16',monospace;
+    display:flex;flex-direction:column;align-items:center;padding:12px;
+    -webkit-font-smoothing:none;min-height:100vh;
+  }
+  h1{font-size:17px;letter-spacing:2px;color:var(--warm);margin:6px 0 2px;text-align:center}
+  .sub{font-size:11px;color:var(--dim);margin-bottom:10px;text-align:center}
+  #stage-wrap{position:relative;width:min(96vw,840px);aspect-ratio:16/9;border:2px solid var(--line);background:#000;box-shadow:0 0 0 4px #090b12,0 8px 40px rgba(0,0,0,.6);overflow:hidden}
+  canvas{width:100%;height:100%;image-rendering:pixelated;display:block}
+
+  .hot{position:absolute;cursor:pointer;border:1px dashed transparent;z-index:5}
+  .hot:hover,.hot:focus-visible{border-color:rgba(255,217,104,.8);background:rgba(255,217,104,.08);outline:none}
+  .hot .tag{
+    position:absolute;left:50%;top:-20px;transform:translateX(-50%);
+    background:#11131a;border:1px solid var(--warm);color:var(--warm);
+    font-size:10px;padding:1px 5px;white-space:nowrap;display:none;pointer-events:none;
+  }
+  .hot:hover .tag,.hot:focus-visible .tag{display:block}
+
+  #msgbar{
+    width:min(96vw,840px);margin-top:8px;background:var(--panel);
+    border:2px solid var(--line);padding:12px 14px;min-height:104px;
+    font-size:13px;line-height:1.8;
+  }
+  #msgbar .who{color:var(--amber);font-size:11px;display:block;margin-bottom:4px}
+  .choices{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
+  .choices button,.nextbtn{
+    font-family:inherit;font-size:13px;padding:10px 16px;cursor:pointer;
+    background:#10141f;border:2px solid var(--cyan);color:var(--cyan);letter-spacing:1px;
+  }
+  .choices button:hover:not(:disabled),.nextbtn:hover{background:var(--cyan);color:#06121a}
+  .choices button:disabled{opacity:.35;cursor:default}
+  .nextbtn{border-color:var(--green);color:var(--green);margin-top:10px}
+  .nextbtn:hover{background:var(--green);color:#07150c}
+
+  /* stage2 log puzzle */
+  .loglist{margin-top:10px;display:flex;flex-direction:column;gap:5px}
+  .loglist button{
+    font-family:inherit;font-size:12px;text-align:left;padding:7px 10px;cursor:pointer;
+    background:#0a0d14;border:1px solid var(--line);color:var(--text);
+  }
+  .loglist button.sel{border-color:var(--amber);color:var(--amber)}
+  .loglist button:disabled{cursor:default}
+  .loglist button.hit{border-color:var(--green);color:var(--green)}
+  .loglist button.miss{opacity:.35}
+
+  /* modal */
+  #modal{position:fixed;inset:0;background:rgba(4,6,10,.85);display:none;align-items:center;justify-content:center;z-index:50;padding:16px}
+  #modal.open{display:flex}
+  #modal .box{
+    width:min(94vw,560px);max-height:88vh;overflow:auto;
+    background:var(--panel);border:2px solid var(--warm);
+    padding:18px;font-size:13px;line-height:1.9;
+    box-shadow:0 0 24px rgba(255,217,104,.12);
+  }
+  #modal h2{font-size:14px;color:var(--warm);border-bottom:1px solid var(--line);padding-bottom:6px;margin-bottom:10px;letter-spacing:1px}
+  #modal .log{background:#0a0d14;border:1px solid var(--line);padding:9px 11px;margin:8px 0;color:var(--amber);font-size:12px;line-height:1.9}
+  #modal .log .err{color:var(--red)}
+  #modal .log .ok2{color:var(--green)}
+  #modal .note{color:var(--dim);font-size:11px;margin-top:10px}
+  #modal .close{margin-top:14px;background:#10141f;border:1px solid var(--warm);color:var(--warm);font-family:inherit;font-size:12px;padding:6px 18px;cursor:pointer}
+  #modal .close:hover{background:var(--warm);color:#1a1408}
+  .field{
+    width:100%;font-family:inherit;font-size:15px;letter-spacing:2px;
+    background:#050a08;border:2px solid var(--green);color:var(--green);
+    padding:9px;margin:8px 0 6px;
+  }
+  .field:focus{outline:none;box-shadow:0 0 12px rgba(125,255,163,.3)}
+  .submit{font-family:inherit;font-size:13px;padding:8px 22px;cursor:pointer;background:var(--green);border:none;color:#06140b}
+  .resmsg{font-size:12px;min-height:18px;margin-top:6px}
+  .resmsg.ng{color:var(--red)}
+  .resmsg.ok{color:var(--green)}
+
+  /* overlays */
+  .screen{
+    position:absolute;inset:0;background:rgba(8,10,16,.94);z-index:20;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    text-align:center;padding:24px;gap:14px;
+  }
+  .screen h2{font-size:clamp(18px,4vw,28px);color:var(--warm);letter-spacing:4px}
+  .screen p{font-size:13px;line-height:2;max-width:520px}
+  .screen .start{
+    font-family:inherit;font-size:14px;letter-spacing:2px;padding:10px 30px;cursor:pointer;
+    background:transparent;border:2px solid var(--warm);color:var(--warm);
+  }
+  .screen .start:hover{background:var(--warm);color:#1a1408}
+  .alarm{animation:alarm 1s steps(2) infinite}
+  @keyframes alarm{50%{color:var(--red)}}
+  .flash{animation:flash .25s steps(2) 3}
+  @keyframes flash{50%{filter:brightness(2.2)}}
+  @media (prefers-reduced-motion: reduce){.alarm,.flash{animation:none}}
+</style>
+</head>
+<body>
+
+<h1>停止したラインと緊急指令</h1>
+<div class="sub">— クリーンルーム・アラート / 装置「待機」の真因を突き止めて脱出せよ —</div>
+
+<div id="stage-wrap">
+  <canvas id="cv" width="320" height="180"></canvas>
+  <div id="hots"></div>
+
+  <div class="screen" id="title-screen">
+    <h2 class="alarm">⚠ LINE STOPPED ⚠</h2>
+    <p>
+      ここは半導体工場のクリーンルーム。<br>
+      白い壁に黄色い照明。装置群は赤い警告ランプを点滅させ、<br>
+      製造装置はすべて<span style="color:var(--red)">待機状態</span>に入った——<br><br>
+      静寂の中、あなたの端末に通信音が鳴る。
+    </p>
+    <button class="start" id="btn-start">▶ 通信に応答する</button>
+  </div>
+
+  <div class="screen" id="end-screen" style="display:none">
+    <h2 style="color:var(--green)">ESCAPE SUCCESS</h2>
+    <p id="end-text"></p>
+    <button class="start" id="btn-retry" style="border-color:var(--green);color:var(--green)">▶ もう一度遊ぶ</button>
+  </div>
+</div>
+
+<div id="msgbar">
+  <span class="who" id="who">SYSTEM ▸</span>
+  <span id="msg"></span>
+  <div id="ui"></div>
+</div>
+
+<!-- modal -->
+<div id="modal" role="dialog" aria-modal="true">
+  <div class="box">
+    <h2 id="m-title"></h2>
+    <div id="m-body"></div>
+    <button class="close" id="m-close">閉じる</button>
+  </div>
+</div>
+
+<script>
+/* ====================== state ====================== */
+const S = {
+  stage:0,
+  // stage1
+  checked:{m1:false,m2:false,m3:false},
+  // stage3
+  clue:{mes:false, online:false, power:false, maint:false, shelf:false, board:false, monitor:false},
+  monitorUnlocked:false,
+  q1ok:false,
+};
+const PASSCODE='1432';                       // 停止時刻 14:32
+const Q1=['搬送','はんそう','ハンソウ'];      // 停止原因の系統
+const Q2=['センサー','せんさー','sensor','SENSOR','センサ']; // 直接原因の部品
+
+/* ====================== canvas ====================== */
+const cv=document.getElementById('cv'), g=cv.getContext('2d');
+function R(x,y,w,h,c){ g.fillStyle=c; g.fillRect(x,y,w,h); }
+
+function baseRoom(){
+  R(0,0,320,180,'#d9d6c9');
+  R(0,0,320,112,'#e8e6dd');
+  for(let i=0;i<320;i+=20) R(i,0,1,112,'#d4d1c4');
+  R(0,112,320,68,'#c9c6b8');
+  for(let y=120;y<180;y+=12) R(0,y,320,1,'#b8b5a6');
+  for(let x=0;x<320;x+=24) R(x,112,1,68,'#b8b5a6');
+  R(0,0,320,8,'#a8a496');
+  for(let x=20;x<320;x+=64){ R(x,2,30,4,'#ffd968'); R(x+4,6,22,2,'#fff3c4'); }
+  for(let x=20;x<320;x+=64) R(x-2,112,36,68,'rgba(255,217,104,0.10)');
+  // OHT rail + stopped vehicle
+  R(0,14,320,3,'#9a9688');
+  R(150,17,16,9,'#767d91'); R(154,26,8,4,'#5a6175'); R(151,18,3,2,'#ff5d5d');
+}
+function machine(x, alert, checked){
+  R(x,40,56,76,'#aeb4c2'); R(x+2,42,52,72,'#8d94a6');
+  R(x+5,46,46,20,'#10141f');
+  R(x+9,50,18,3, checked?'#7dffa3':'#2a4a8a'); R(x+9,56,28,3,'#2a4a8a');
+  for(let b=0;b<3;b++) R(x+9+b*15,72,10,8,'#3a4256');
+  R(x+5,86,46,22,'#767d91');
+  R(x+9,92,6,6, alert?'#ff5d5d':'#7dffa3');
+  if(alert){ R(x+22,30,12,7,'#5a1b22'); R(x+25,32,6,3,'#ff5d5d'); }
+}
+function sceneStage1(){
+  baseRoom();
+  machine(14,  true, S.checked.m1);
+  machine(82,  true, S.checked.m2);
+  machine(150, true, S.checked.m3);
+  // door
+  R(272,118,38,52,'#9aa0b0'); R(275,121,32,46,'#7e8496');
+  R(286,112,12,5,'#5a1b22'); R(289,113,6,3,'#ff5d5d');
+  // intercom on wall
+  R(232,60,18,24,'#767d91'); R(235,64,12,8,'#10141f'); R(238,76,6,4,'#ffd968');
+}
+function sceneAnalysis(){
+  R(0,0,320,180,'#0a0d14');
+  R(8,8,304,164,'#0d1320'); R(10,10,300,16,'#13203a');
+  R(14,14,90,8,'#6fe3ff');
+  const rows=['#ffb454','#ff5d5d','#8b97b5','#ffb454','#8b97b5','#ff5d5d','#ffb454','#8b97b5'];
+  rows.forEach((c,i)=>{
+    const y=36+i*16;
+    R(16,y,6,6,c); R(28,y,120+((i*53)%90),6,'#23406b'); R(220,y,60,6,c==='#ff5d5d'?'#5a1b22':'#1a2438');
+  });
+  R(16,164,40,4,'#7dffa3');
+}
+function sceneStage3(){
+  baseRoom();
+  // MES terminal (left desk)
+  R(10,128,40,8,'#8d94a6'); R(12,136,4,20,'#767d91'); R(44,136,4,20,'#767d91');
+  R(16,106,28,22,'#10141f'); R(18,108,24,18,'#0e1d3a'); R(20,112,16,2,'#6fe3ff'); R(20,116,10,2,'#6fe3ff');
+  // online monitor (wall, center-left)
+  R(70,42,34,26,'#3a4256'); R(72,44,30,22,'#0a0d14'); R(74,46,26,5,'#1f5a4a'); R(74,54,18,2,'#7dffa3'); R(74,58,12,2,'#8b97b5');
+  // power panel (wall, center)
+  R(120,40,26,34,'#767d91'); R(122,42,22,30,'#5a6175');
+  R(125,46,6,6,'#7dffa3'); R(133,46,6,6,'#7dffa3'); R(125,56,6,6,'#7dffa3'); R(133,56,6,6,'#7dffa3');
+  // whiteboard (wall, right of power)
+  R(160,38,52,34,'#f4f2ea'); R(160,38,52,3,'#9a9688'); R(160,69,52,3,'#9a9688');
+  R(164,46,30,2,'#3a5a8a'); R(164,52,40,2,'#3a5a8a'); R(164,58,22,2,'#c0392b');
+  // maintenance file on small table
+  R(222,128,30,8,'#8d94a6'); R(224,136,4,18,'#767d91'); R(246,136,4,18,'#767d91');
+  R(228,118,18,10,'#d9534f'); R(230,120,14,2,'#f4f2ea'); R(230,124,10,1,'#f4f2ea');
+  // parts shelf (right)
+  R(262,44,48,70,'#9aa0b0'); R(264,46,44,66,'#767d91');
+  for(let s=0;s<3;s++){
+    const sy=52+s*20; R(265,sy+12,42,2,'#5a6175');
+    for(let b=0;b<4;b++){ if(s===1&&b===2) continue; R(268+b*10,sy,7,10, '#aeb4c2'); }
+  }
+  R(288,72,7,10,'#3a4256');
+  // transport monitor (locked, on floor center)
+  R(96,120,38,30,'#3a4256'); R(99,123,32,20,'#0a0d14');
+  if(S.monitorUnlocked){ R(102,126,24,4,'#5a3a1f'); R(102,133,16,3,'#ffb454'); }
+  else { R(112,128,8,10,'#5a1b22'); R(114,126,4,4,'#5a1b22'); R(115,131,2,4,'#ffd968'); } // padlock
+  // exit terminal (near door)
+  R(196,120,30,26,'#3a4256'); R(199,123,24,16,'#06140b'); R(201,126,14,2,'#7dffa3'); R(201,130,8,2,'#2a6b45');
+  // door
+  R(272,118,38,52,'#9aa0b0'); R(275,121,32,46,'#7e8496');
+  R(286,112,12,5,'#5a1b22'); R(289,113,6,3, S.stage>=9 ? '#7dffa3':'#ff5d5d');
+}
+
+/* ====================== hotspot system ====================== */
+const hotsLayer=document.getElementById('hots');
+function setHotspots(list){
+  hotsLayer.innerHTML='';
+  list.forEach(h=>{
+    const d=document.createElement('div');
+    d.className='hot'; d.tabIndex=0; d.setAttribute('role','button');
+    d.style.cssText=`left:${h.x}%;top:${h.y}%;width:${h.w}%;height:${h.h}%`;
+    d.innerHTML=`<span class="tag">${h.label}</span>`;
+    const act=()=>h.fn();
+    d.addEventListener('click',act);
+    d.addEventListener('keydown',e=>{ if(e.key==='Enter'||e.key===' '){e.preventDefault();act();} });
+    hotsLayer.appendChild(d);
+  });
+}
+
+/* ====================== UI helpers ====================== */
+const msg=document.getElementById('msg'), who=document.getElementById('who'), ui=document.getElementById('ui');
+function say(speaker,text,uiHtml=''){ who.textContent=speaker+' ▸'; msg.innerHTML=text; ui.innerHTML=uiHtml; }
+
+const modal=document.getElementById('modal'), mTitle=document.getElementById('m-title'), mBody=document.getElementById('m-body');
+let lastFocus=null;
+function openModal(t,h){ lastFocus=document.activeElement; mTitle.textContent=t; mBody.innerHTML=h; modal.classList.add('open'); document.getElementById('m-close').focus(); }
+function closeModal(){ modal.classList.remove('open'); if(lastFocus)lastFocus.focus(); }
+document.getElementById('m-close').onclick=closeModal;
+modal.addEventListener('click',e=>{ if(e.target===modal) closeModal(); });
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeModal(); });
+
+/* ====================== STAGE 1 ====================== */
+const M_INFO={
+  m1:{name:'露光装置 #EXP-01',log:`▸ STATUS: <span class="err">待機（IDLE）</span><br>▸ 装置アラーム：なし<br>▸ レチクル：装着済み・正常<br>▸ <span class="err">「FOUP未到着：受入ポート空」</span>`},
+  m2:{name:'洗浄装置 #CLN-02',log:`▸ STATUS: <span class="err">待機（IDLE）</span><br>▸ 薬液温度：<span class="ok2">正常</span>　純水流量：<span class="ok2">正常</span><br>▸ <span class="err">「処理待ち：前工程からの供給なし」</span>`},
+  m3:{name:'エッチング装置 #ETC-03',log:`▸ STATUS: <span class="err">待機（IDLE）</span><br>▸ チャンバー真空度：<span class="ok2">正常</span><br>▸ <span class="err">「キャリア受け取り失敗：3回連続」</span>`},
+};
+function stage1(){
+  S.stage=1; sceneStage1();
+  say('工場長','「緊急事態だ。ライン全体が止まっている。<br>まずは<span style="color:var(--warm)">現場の装置の状態</span>を直接確認して、状況を報告してくれ。」<br><span style="font-size:11px;color:var(--dim)">▶ 3台の装置をクリックして点検しよう</span>');
+  setHotspots([
+    {x:4, y:22,w:18,h:43,label:'露光装置',fn:()=>checkMachine('m1')},
+    {x:25,y:22,w:18,h:43,label:'洗浄装置',fn:()=>checkMachine('m2')},
+    {x:46,y:22,w:18,h:43,label:'エッチング装置',fn:()=>checkMachine('m3')},
+    {x:84,y:64,w:13,h:30,label:'ロックされた扉',fn:()=>openModal('扉',`電子ロック作動中。<div class="log"><span class="err">「ライン停止の真因報告まで開放できません」</span></div>`)},
+    {x:71,y:32,w:7,h:15,label:'インターホン',fn:()=>openModal('インターホン',`工場長への直通回線。今は点検が先だ。<div class="note">3台の装置をすべて確認すると報告できる。</div>`)},
+  ]);
+}
+function checkMachine(key){
+  S.checked[key]=true;
+  sceneStage1();
+  const info=M_INFO[key];
+  openModal(info.name,`<div class="log">${info.log}</div><div class="note">装置自体に故障はない。ただ「来るはずのモノ」が来ていない…。</div>`);
+  const n=Object.values(S.checked).filter(Boolean).length;
+  if(n<3){
+    say('SYSTEM',`装置を点検中…（${n} / 3）<br>残りの装置も確認しよう。`);
+  }else{
+    say('あなた','「……3台とも装置エラーはゼロ。全部『待機』で止まってる。<br>共通してるのは<span style="color:var(--amber)">材料が届いていない</span>ことだ」',
+      `<button class="nextbtn" id="report1">▶ 工場長に報告する</button>`);
+    document.getElementById('report1').onclick=stage1Report;
+  }
+}
+function stage1Report(){
+  say('工場長','「装置は無傷で、全台が材料待ち…か。<br>なら次は<span style="color:var(--warm)">分析ツール</span>の出番だ。<br>状況に合うツールはどれだ？　判断はお前に任せる。」',
+    `<div class="choices">
+      <button data-tool="venus">VEN〇S<br><span style="font-size:10px;color:var(--dim)">装置の移動状態を確認できる</span></button>
+      <button data-tool="recipe">レシピエディタ<br><span style="font-size:10px;color:var(--dim)">プロセス条件を編集できる</span></button>
+      <button data-tool="taiki">待機分析ツール<br><span style="font-size:10px;color:var(--dim)">装置の待機状態を分析できる</span></button>
+    </div>`);
+  ui.querySelectorAll('button').forEach(b=>{
+    b.onclick=()=>{
+      const t=b.dataset.tool;
+      if(t==='taiki'){ pickTaiki(); return; }
+      b.disabled=true;
+      if(t==='venus'){
+        say('工場長','「VEN〇Sか…装置の移動状態は見えるが、<br>装置は動いていないんじゃない、<span style="color:var(--warm)">待たされている</span>んだ。<br>知りたいのは『なぜ待機しているか』だ。もう一度考えてくれ。」',ui.innerHTML);
+      }else{
+        say('工場長','「レシピエディタ？　プロセス条件は誰も触っていない。<br>条件を弄る前に、<span style="color:var(--warm)">なぜ材料が来ないのか</span>を見るべきだろう。」',ui.innerHTML);
+      }
+      rebindTools();
+    };
+  });
+  function rebindTools(){
+    ui.querySelectorAll('button').forEach(b=>{
+      if(b.disabled) return;
+      b.onclick=()=>{ if(b.dataset.tool==='taiki') pickTaiki(); };
+      if(b.dataset.tool!=='taiki'){
+        b.onclick=()=>{ b.disabled=true; say('工場長','「そっちじゃない。装置たちは<span style="color:var(--warm)">待機</span>している——それが答えのヒントだ。」',ui.innerHTML); rebindTools(); };
+      }
+    });
+  }
+}
+function pickTaiki(){
+  say('工場長','「なるほど、<span style="color:var(--cyan)">待機分析ツール</span>か。いい判断だ。<br>装置が『何を待っているのか』、ログから洗い出してくれ。」',
+    `<button class="nextbtn" id="go2">▶ 待機分析ツールを起動する</button>`);
+  document.getElementById('go2').onclick=stage2;
+}
+
+/* ====================== STAGE 2 ====================== */
+const LOGS=[
+  {t:'02:55  定期メンテナンス完了（A5系 前処理）',     hit:false},
+  {t:'14:31  FOUP受入ポート：搬送車の到着なし',        hit:true},
+  {t:'14:31  薬液温度 23.0℃ — 規格内',               hit:false},
+  {t:'14:32  前工程からの供給途絶を検知',              hit:true},
+  {t:'14:32  クリーンルーム空調 — 差圧正常',           hit:false},
+  {t:'14:33  キャリア搬送要求 — 応答タイムアウト',      hit:true},
+  {t:'14:35  オペレータ呼出ブザー鳴動',                hit:false},
+];
+function stage2(){
+  S.stage=2; sceneAnalysis();
+  setHotspots([]);
+  cv.classList.add('flash'); setTimeout(()=>cv.classList.remove('flash'),800);
+  say('待機分析ツール','「装置ログを解析しています……解析完了。<br>直前のイベントログから、<span style="color:var(--warm)">待機の引き金になったログを3件</span>選択してください。」<br><span style="font-size:11px;color:var(--dim)">※ 正常なログ・無関係なログが混ざっています</span>',
+    `<div class="loglist" id="loglist">${LOGS.map((l,i)=>`<button data-i="${i}">▸ ${l.t}</button>`).join('')}</div>
+     <button class="nextbtn" id="log-judge" style="display:none">▶ この3件で解析する</button>
+     <div class="resmsg" id="log-msg"></div>`);
+  const list=document.getElementById('loglist');
+  const judge=document.getElementById('log-judge');
+  const lm=document.getElementById('log-msg');
+  let sel=new Set();
+  list.addEventListener('click',e=>{
+    const b=e.target.closest('button'); if(!b||b.disabled) return;
+    const i=+b.dataset.i;
+    if(sel.has(i)){ sel.delete(i); b.classList.remove('sel'); }
+    else { if(sel.size>=3) return; sel.add(i); b.classList.add('sel'); }
+    judge.style.display = sel.size===3 ? 'inline-block' : 'none';
+  });
+  judge.onclick=()=>{
+    const correct=[...sel].every(i=>LOGS[i].hit);
+    if(correct){
+      list.querySelectorAll('button').forEach(b=>{
+        b.disabled=true;
+        b.classList.add(LOGS[+b.dataset.i].hit?'hit':'miss');
+      });
+      judge.style.display='none';
+      lm.className='resmsg ok';
+      lm.textContent='✔ 解析成功 — 共通点：すべて「モノが届かない／運ばれない」系のイベント';
+      setTimeout(stage2Result,900);
+    }else{
+      lm.className='resmsg ng';
+      lm.textContent='✘ 解析失敗：選択ログに待機と無関係なものが含まれています。共通点を探せ。';
+      sel.clear();
+      list.querySelectorAll('button').forEach(b=>b.classList.remove('sel'));
+      judge.style.display='none';
+    }
+  };
+}
+function stage2Result(){
+  say('待機分析ツール','「<span style="color:var(--green)">解析結果</span>：待機種別 = <span style="color:var(--amber)">供給待ち（前工程起因ではない）</span><br>装置・プロセス・空調はすべて正常。<br>異常は<span style="color:var(--red)">『運ぶ』機能</span>の周辺に集中しています。<br>ライン停止時刻：<span style="color:var(--warm)">14:32</span>」',
+    `<button class="nextbtn" id="go3">▶ 管制エリアで原因を調査する</button>`);
+  document.getElementById('go3').onclick=()=>{
+    say('工場長','「解析結果は受け取った。だが<span style="color:var(--warm)">『運ぶ機能の異常』だけでは報告にならん</span>。<br>管制エリアの端末・記録・現物をすべて当たって、<br><span style="color:var(--red)">どの系統の・何が・直接の原因か</span>まで突き止めろ。」',
+      `<button class="nextbtn" id="go3b">▶ 調査開始</button>`);
+    document.getElementById('go3b').onclick=stage3;
+  };
+}
+
+/* ====================== STAGE 3 ====================== */
+function clueCount(){ return Object.values(S.clue).filter(Boolean).length; }
+function stage3(){
+  S.stage=3; sceneStage3();
+  say('SYSTEM','管制エリアに移動した。端末・掲示物・記録・現物——<span style="color:var(--warm)">調べられるものはすべて調べろ</span>。<br><span style="font-size:11px;color:var(--dim)">情報には無関係なもの（ノイズ）も混ざっている。真因に繋がる証拠を見極めよう。</span>');
+  setHotspots([
+    {x:3, y:55,w:14,h:33,label:'MES端末',fn:spotMES},
+    {x:21,y:21,w:12,h:18,label:'オンライン監視画面',fn:spotOnline},
+    {x:36,y:20,w:10,h:22,label:'電源盤',fn:spotPower},
+    {x:49,y:19,w:18,h:22,label:'ホワイトボード',fn:spotBoard},
+    {x:68,y:62,w:12,h:14,label:'保全記録ファイル',fn:spotMaint},
+    {x:81,y:23,w:16,h:42,label:'部品棚',fn:spotShelf},
+    {x:29,y:64,w:13,h:20,label:'搬送モニタ（ロック中）',fn:spotMonitor},
+    {x:60,y:64,w:11,h:18,label:'報告端末',fn:spotExit},
+    {x:84,y:64,w:13,h:30,label:'ロックされた扉',fn:()=>openModal('扉',`<div class="log"><span class="err">「真因の報告完了まで開放できません」</span><br>「報告は報告端末より行ってください」</div>`)},
+  ]);
+}
+function spotMES(){
+  S.clue.mes=true;
+  openModal('MES端末（製造実行システム）',`
+    ロット進捗モニタが表示されている。
+    <div class="log">▸ 全ロット：<span class="err">工程間で停滞中</span><br>
+    ▸ 装置ステータス：全台 <span class="err">待機（材料待ち）</span><br>
+    ▸ 装置エラー報告：<span class="ok2">0件</span><br>
+    ▸ <span style="color:var(--warm)">ライン停止時刻：14:32</span></div>
+    <div class="note">装置は一台も壊れていない。それと、停止時刻…どこかで使いそうだ。</div>`);
+}
+function spotOnline(){
+  S.clue.online=true;
+  openModal('オンライン監視画面（装置通信）',`
+    ホスト⇔装置間の通信状態モニタ。
+    <div class="log">▸ ホスト接続：<span class="ok2">全装置 正常</span><br>
+    ▸ レシピ配信：<span class="ok2">正常</span><br>
+    ▸ <span class="err">搬送系コマンドのみ：応答なし（タイムアウト）</span></div>
+    <div class="note">「通信障害」かと思ったが、死んでいるのは搬送系の応答だけ。ネットワーク全体は生きている。</div>`);
+}
+function spotPower(){
+  S.clue.power=true;
+  openModal('電源盤',`
+    分電盤の各系統ランプを確認する。
+    <div class="log">▸ 装置系統：<span class="ok2">正常</span>　▸ 空調系統：<span class="ok2">正常</span><br>
+    ▸ 搬送系統：<span class="ok2">通電あり</span>　▸ 停電履歴：<span class="ok2">なし</span></div>
+    <div class="note">停電説は消えた。搬送系にも電気は来ている。なのに動いていない——電源以外の原因だ。</div>`);
+}
+function spotBoard(){
+  S.clue.board=true;
+  openModal('ホワイトボード',`
+    今日の連絡事項が書かれている。
+    <div class="log">「本日 定期メンテ：A5系 前処理（早朝完了済み）」<br>
+    「<span style="color:var(--warm)">監視端末のPWは『ライン停止時刻4桁』に変更した（情シス）</span>」<br>
+    「来週：薬液タンク交換あり」<br>
+    <span class="err">「佐藤さん→ 作業中断するときは必ず報告！！」</span></div>
+    <div class="note">監視端末のパスワードのヒント。それと…佐藤さん、何かやらかしたのか？</div>`);
+}
+function spotMaint(){
+  S.clue.maint=true;
+  openModal('保全記録ファイル',`
+    今日の作業記録をめくる。
+    <div class="log">▸ 02:55 A5系 前処理 定期メンテ — <span class="ok2">完了</span>（担当：田中）<br>
+    ▸ 13:50 OHT分岐点B-4 <span style="color:var(--warm)">センサー交換作業 開始</span>（担当：佐藤）<br>
+    ▸ 14:20 <span class="err">作業中断（昼食交代）— 再開記録なし</span><br>
+    ▸ 復帰確認欄：<span class="err">空欄</span></div>
+    <div class="note">14:20に搬送レールのセンサー交換が中断され、そのまま…。停止時刻14:32と辻褄が合う。</div>`);
+}
+function spotShelf(){
+  S.clue.shelf=true;
+  openModal('部品棚',`
+    予備パーツの棚。持ち出し台帳と突き合わせる。
+    <div class="log">▸ 制御基板：<span class="ok2">在庫一致</span>　▸ 駆動ベルト：<span class="ok2">在庫一致</span><br>
+    ▸ <span class="err">搬送ロボット用センサー：1個 持ち出し中（持出者：佐藤／返却・取付完了記録なし）</span></div>
+    <div class="note">外された古いセンサーの空きスロットがある。新しいセンサーはまだ取り付けられていない？</div>`);
+}
+function spotMonitor(){
+  if(S.monitorUnlocked){ showMonitor(); return; }
+  openModal('搬送モニタ — ログイン',`
+    搬送系統の監視端末。パスワードロックがかかっている。
+    <div class="log">▸ パスワード：数字4桁</div>
+    <input class="field" id="pw" type="text" inputmode="numeric" maxlength="4" placeholder="＿＿＿＿" autocomplete="off">
+    <button class="submit" id="pw-go">解除</button>
+    <div class="resmsg" id="pw-msg"></div>
+    <div class="note">どこかにパスワードのヒントがあるはずだ。</div>`);
+  const pw=document.getElementById('pw'), pm=document.getElementById('pw-msg');
+  pw.focus();
+  function tryPw(){
+    if(pw.value.trim()===PASSCODE){
+      S.monitorUnlocked=true; sceneStage3();
+      pm.className='resmsg ok'; pm.textContent='✔ ロック解除';
+      setTimeout(showMonitor,500);
+    }else{
+      pm.className='resmsg ng'; pm.textContent='✘ パスワードが違います';
+    }
+  }
+  document.getElementById('pw-go').onclick=tryPw;
+  pw.addEventListener('keydown',e=>{ if(e.key==='Enter') tryPw(); });
+}
+function showMonitor(){
+  S.clue.monitor=true;
+  openModal('搬送モニタ',`
+    搬送系統のリアルタイム状態が表示される。
+    <div class="log">▸ OHT全車両：<span class="err">停止中</span><br>
+    ▸ 停止理由：<span class="err">分岐点B-4 位置センサー未検出 → 安全インターロック作動</span><br>
+    ▸ レール給電：<span class="ok2">正常</span>　▸ 車両故障：<span class="ok2">なし</span><br>
+    ▸ 発生時刻：<span style="color:var(--warm)">14:32</span></div>
+    <div class="note">確定だ。分岐点B-4のセンサーが無いせいで、安全装置が搬送全体を止めている。<br>これで報告できる——<span style="color:var(--warm)">報告端末</span>へ。</div>`);
+}
+function spotExit(){
+  if(!S.clue.monitor){
+    openModal('報告端末',`
+      <div class="log">▸ 「真因の<span class="err">裏付けが不足</span>しています」<br>「搬送系統の状態を直接確認してください」</div>
+      <div class="note">推測だけでは報告できない。搬送モニタの記録が要りそうだ。</div>`);
+    return;
+  }
+  if(!S.q1ok){
+    openModal('報告端末 — 真因報告（1/2）',`
+      <div class="log" style="color:var(--green)">▸ Q1：停止原因は<span style="color:var(--warm)">どの系統</span>の異常か？</div>
+      <input class="field" id="q1" type="text" placeholder="系統名を入力…" autocomplete="off">
+      <button class="submit" id="q1-go">送信</button>
+      <div class="resmsg" id="q1-msg"></div>`);
+    const q1=document.getElementById('q1'), qm=document.getElementById('q1-msg');
+    q1.focus();
+    function go(){
+      const v=q1.value.trim();
+      if(!v) return;
+      if(Q1.some(w=>v.includes(w))){
+        S.q1ok=true;
+        qm.className='resmsg ok'; qm.textContent='✔ 系統照合OK';
+        setTimeout(spotExit,500);
+      }else{
+        qm.className='resmsg ng'; qm.textContent='✘ 照合失敗：装置・通信・電源はすべて正常記録です';
+      }
+    }
+    document.getElementById('q1-go').onclick=go;
+    q1.addEventListener('keydown',e=>{ if(e.key==='Enter') go(); });
+    return;
+  }
+  openModal('報告端末 — 真因報告（2/2）',`
+    <div class="log" style="color:var(--green)">▸ Q1：搬送系統 — <span class="ok2">照合OK</span><br>▸ Q2：直接原因となった<span style="color:var(--warm)">部品</span>は何か？</div>
+    <input class="field" id="q2" type="text" placeholder="部品名を入力…" autocomplete="off">
+    <button class="submit" id="q2-go">送信</button>
+    <div class="resmsg" id="q2-msg"></div>`);
+  const q2=document.getElementById('q2'), qm2=document.getElementById('q2-msg');
+  q2.focus();
+  function go2(){
+    const v=q2.value.trim();
+    if(!v) return;
+    if(Q2.some(w=>v.toLowerCase().includes(w.toLowerCase()))){
+      escapeSuccess();
+    }else{
+      qm2.className='resmsg ng'; qm2.textContent='✘ 照合失敗：保全記録と持ち出し台帳を確認せよ';
+    }
+  }
+  document.getElementById('q2-go').onclick=go2;
+  q2.addEventListener('keydown',e=>{ if(e.key==='Enter') go2(); });
+}
+
+function escapeSuccess(){
+  S.stage=9; closeModal(); sceneStage3(); setHotspots([]);
+  cv.classList.add('flash');
+  document.getElementById('end-text').innerHTML=`
+    ロック解除音とともに、クリーンルームの扉が開く。<br><br>
+    <span style="color:var(--amber)">工場長：「完璧な報告だ。<br>
+    分岐点B-4のセンサー交換が中断されたまま——<br>
+    安全インターロックが搬送全体を止めていた。<br>
+    装置でも通信でも電源でもない。原因は<span style="color:var(--red)">搬送</span>、<br>
+    直接原因は<span style="color:var(--red)">センサー</span>だ。よく突き止めた。脱出成功だ。」</span><br><br>
+    黄色い照明の下、OHTが再び天井を走り出した。`;
+  document.getElementById('end-screen').style.display='flex';
+  say('SYSTEM','ESCAPE SUCCESS');
+}
+
+/* ====================== boot ====================== */
+sceneStage1();
+say('SYSTEM','▶ 通信に応答してゲームを開始してください。');
+document.getElementById('btn-start').onclick=()=>{
+  document.getElementById('title-screen').style.display='none';
+  stage1();
+};
+document.getElementById('btn-retry').onclick=()=>location.reload();
+</script>
+</body>
+</html>
